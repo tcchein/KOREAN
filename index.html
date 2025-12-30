@@ -196,6 +196,9 @@
         </label>
         <button id="startQuizBtn">開始測驗</button>
         <button id="showStrengthBtn" class="secondary" style="margin-left:0;">查看加強練習單字</button>
+        <button id="showAllWordsBtn" class="secondary">查看全部單字庫</button>
+        <button id="exportAllBtn" class="secondary">匯出全部單字 CSV</button>
+        <button id="exportStrengthBtn" class="secondary">匯出加強單字 CSV</button>
         <div class="small-note">如果單字數不夠，系統會自動重複出題直到達到題數。</div>
 
         <!-- 加強練習單字列表 -->
@@ -203,6 +206,26 @@
           <div class="small-note">目前在加強練習區的單字：</div>
           <div id="strengthList" class="today-list">
             目前沒有在加強練習區的單字。
+          </div>
+        </div>
+
+        <!-- 全部單字庫列表 -->
+        <div id="allWordsArea" style="display:none; margin-top:8px;">
+          <div class="small-note">目前所有單字庫：</div>
+          <label>搜尋單字
+            <input
+              type="text"
+              id="searchInput"
+              placeholder="輸入中文或韓文的一部分"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+            >
+          </label>
+          <button id="searchBtn">搜尋</button>
+          <div id="allWordsList" class="today-list">
+            目前還沒有任何單字。
           </div>
         </div>
 
@@ -240,16 +263,16 @@
       onAuthStateChanged,
       signInWithPopup,
       signOut,
-      GoogleAuthProvider,
+      GoogleAuthProvider
     } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js';
     import {
       getFirestore,
       doc,
       getDoc,
-      setDoc,
+      setDoc
     } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js';
 
-    // ★★★ 把這段換成你 Firebase 專案的設定 ★★★
+    // ★★★ 把這段換成「你現在那段已經可以登入的 firebaseConfig」 ★★★
     const firebaseConfig = {
       apiKey: "AIzaSyAFWMBI4pTzWYsDLpuUEi3PBJ4u2llDMLc",
       authDomain: "korean-8ab65.firebaseapp.com",
@@ -257,32 +280,30 @@
       storageBucket: "korean-8ab65.firebasestorage.app",
       messagingSenderId: "1039991780656",
       appId: "1:1039991780656:web:88c01469fae9f201c844f5",
-};
-
+    };
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
-    // === 狀態 ===
+    // ---- app state ----
     // word: { id, chinese, korean, date, correctCount, wrongCount, inStrength, strengthStreak }
     let state = { words: [] };
 
     let quizWords = [];
     let currentIndex = 0;
-    let quizStats = {
-      correct: 0,
-      wrong: 0,
-      wrongIds: new Set()
-    };
+    let quizStats = { correct: 0, wrong: 0, wrongIds: new Set() };
     let quizActive = false;
     let currentMode = 'today';
     let editingWordId = null;
     let currentUser = null;
 
-    // UI 元件（之後在 DOMContentLoaded 裡面賦值）
-    let authStatusEl, appAreaEl, loginBtn, logoutBtn, showStrengthBtn, strengthArea;
+    // DOM 參考
+    let authStatusEl, appAreaEl, loginBtn, logoutBtn;
+    let showStrengthBtn, strengthArea;
+    let showAllWordsBtn, allWordsArea;
+    let exportAllBtn, exportStrengthBtn;
 
     function todayString() {
       const d = new Date();
@@ -333,6 +354,13 @@
       })();
     }
 
+    // ===== 顯示 / 隱藏今日單字（給作答時用） =====
+    function setTodayListVisible(visible) {
+      const todayList = document.getElementById('todayList');
+      if (!todayList) return;
+      todayList.style.display = visible ? 'block' : 'none';
+    }
+
     // ===== UI：列表 =====
     function renderTodayList() {
       const container = document.getElementById('todayList');
@@ -349,7 +377,6 @@
           <button class="editWordBtn" data-id="${w.id}">編輯</button>
         </div>
       `).join('');
-
       container.querySelectorAll('.editWordBtn').forEach(btn => {
         btn.addEventListener('click', () => {
           startEditWord(btn.dataset.id);
@@ -370,10 +397,49 @@
         .join('');
     }
 
+    function renderAllWordsList(filtered = null) {
+      const container = document.getElementById('allWordsList');
+      if (!container) return;
+      const words = filtered || state.words;
+      if (!words.length) {
+        container.textContent = filtered ? '沒有找到符合的單字。' : '目前還沒有任何單字。';
+        return;
+      }
+      container.innerHTML = words.map(w => `
+        <div class="today-item">
+          <span>[${w.date}] ${w.chinese} → ${w.korean}</span>
+          <button class="editWordBtn" data-id="${w.id}">編輯</button>
+        </div>
+      `).join('');
+      container.querySelectorAll('.editWordBtn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          startEditWord(btn.dataset.id);
+        });
+      });
+    }
+
+    // 搜尋全部單字
+    function searchAllWords() {
+      const input = document.getElementById('searchInput');
+      if (!input) return;
+      const keyword = input.value.trim();
+      if (!keyword) {
+        renderAllWordsList(); // 沒輸入就顯示全部
+        return;
+      }
+      const lower = keyword.toLowerCase();
+      const filtered = state.words.filter(w =>
+        (w.chinese && w.chinese.includes(keyword)) ||
+        (w.korean && w.korean.includes(keyword)) ||
+        (w.chinese && w.chinese.toLowerCase().includes(lower)) ||
+        (w.korean && w.korean.toLowerCase().includes(lower))
+      );
+      renderAllWordsList(filtered);
+    }
+
     function startEditWord(id) {
       const word = state.words.find(w => w.id === id);
       if (!word) return;
-      editingWordId = id;
       const chInput = document.getElementById('chineseInput');
       const krInput = document.getElementById('koreanInput');
       const addBtn = document.getElementById('addWordBtn');
@@ -383,15 +449,16 @@
       krInput.value = word.korean;
       addBtn.textContent = '儲存修改';
       cancelBtn.style.display = 'inline-block';
+      editingWordId = id;
     }
 
     function cancelEdit() {
-      editingWordId = null;
       const chInput = document.getElementById('chineseInput');
       const krInput = document.getElementById('koreanInput');
       const addBtn = document.getElementById('addWordBtn');
       const cancelBtn = document.getElementById('cancelEditBtn');
       if (!chInput || !krInput || !addBtn || !cancelBtn) return;
+      editingWordId = null;
       chInput.value = '';
       krInput.value = '';
       addBtn.textContent = '加入今日單字';
@@ -408,7 +475,6 @@
         alert('中文與韓文都要填喔～');
         return;
       }
-
       if (editingWordId) {
         const word = state.words.find(w => w.id === editingWordId);
         if (word) {
@@ -428,13 +494,76 @@
         };
         state.words.push(word);
       }
-
       saveState();
       renderTodayList();
-      if (strengthArea && strengthArea.style.display !== 'none') {
+      const strengthAreaEl = document.getElementById('strengthArea');
+      if (strengthAreaEl && strengthAreaEl.style.display !== 'none') {
         renderStrengthList();
       }
+      const allWordsAreaEl = document.getElementById('allWordsArea');
+      if (allWordsAreaEl && allWordsAreaEl.style.display !== 'none') {
+        renderAllWordsList();
+      }
       cancelEdit();
+    }
+
+    // ===== 匯出 CSV =====
+    function exportToCsv(words, filename) {
+      if (!words.length) {
+        alert('目前沒有資料可以匯出。');
+        return;
+      }
+      const header = [
+        'date',
+        'chinese',
+        'korean',
+        'correctCount',
+        'wrongCount',
+        'inStrength',
+        'strengthStreak'
+      ];
+      const rows = [header];
+
+      for (const w of words) {
+        const row = [
+          w.date || '',
+          w.chinese || '',
+          w.korean || '',
+          String(w.correctCount || 0),
+          String(w.wrongCount || 0),
+          w.inStrength ? 'true' : 'false',
+          String(w.strengthStreak || 0)
+        ];
+        rows.push(row);
+      }
+
+      // 簡單 CSV escaping：每格用雙引號包起來，裡面的雙引號變成兩個
+      const csv = rows
+        .map(cols =>
+          cols
+            .map(c => '"' + String(c).replace(/"/g, '""') + '"')
+            .join(',')
+        )
+        .join('\r\n');
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function exportAllWordsCsv() {
+      exportToCsv(state.words, 'all_words.csv');
+    }
+
+    function exportStrengthWordsCsv() {
+      const words = state.words.filter(w => w.inStrength);
+      exportToCsv(words, 'strength_words.csv');
     }
 
     // ===== 出題相關 =====
@@ -454,7 +583,7 @@
       if (!sourceWords.length) return list;
       desiredCount = Math.max(1, desiredCount);
       while (list.length < desiredCount) {
-        for (let w of sourceWords) {
+        for (const w of sourceWords) {
           list.push(w);
           if (list.length >= desiredCount) break;
         }
@@ -503,6 +632,10 @@
       quizArea.style.display = 'block';
       nextBtn.style.display = 'none';
       feedback.textContent = '';
+
+      // 作答時隱藏今日單字
+      setTodayListVisible(false);
+
       showCurrentQuestion();
     }
 
@@ -532,9 +665,7 @@
       ansInput.focus();
     }
 
-    function normalize(str) {
-      return str.trim();
-    }
+    function normalize(str) { return str.trim(); }
 
     function handleAnswer(isSkip) {
       if (!quizActive) return;
@@ -550,9 +681,7 @@
       const correctAns = normalize(word.korean);
 
       let correct = false;
-      if (!isSkip && userAns === correctAns) {
-        correct = true;
-      }
+      if (!isSkip && userAns === correctAns) correct = true;
 
       let extraMsg = '';
 
@@ -568,14 +697,13 @@
             extraMsg = '（已連續答對三次，從加強練習區畢業 🎉）';
           }
         }
-
         feedback.textContent = '✔️ 正確！' + extraMsg;
       } else {
         quizStats.wrong += 1;
         word.wrongCount = (word.wrongCount || 0) + 1;
         quizStats.wrongIds.add(word.id);
 
-        // ★ 需求 3：在「加強練習模式」裡錯題，不再重新放入加強區
+        // 非「加強模式」才會把錯題加入加強區
         if (currentMode !== 'wrong' && !word.inStrength) {
           word.inStrength = true;
         }
@@ -585,7 +713,8 @@
       }
 
       saveState();
-      if (strengthArea && strengthArea.style.display !== 'none') {
+      const strengthAreaEl = document.getElementById('strengthArea');
+      if (strengthAreaEl && strengthAreaEl.style.display !== 'none') {
         renderStrengthList();
       }
 
@@ -649,6 +778,8 @@
         backBtn.addEventListener('click', () => {
           const quizArea = document.getElementById('quizArea');
           if (quizArea) quizArea.style.display = 'none';
+          // 回到模式選擇時，重新顯示今日單字
+          setTodayListVisible(true);
         }, { once: true });
       }
     }
@@ -656,6 +787,14 @@
     // ===== 全域 Enter：送出答案 / 下一題 =====
     function globalEnterHandler(e) {
       if (e.key !== 'Enter') return;
+      const activeEl = document.activeElement;
+      // 如果 focus 在搜尋框，就讓它當搜尋 Enter，不要攔截成答題
+      if (activeEl && activeEl.id === 'searchInput') {
+        e.preventDefault();
+        searchAllWords();
+        return;
+      }
+
       if (!quizActive) return;
       const quizArea = document.getElementById('quizArea');
       if (!quizArea || quizArea.style.display === 'none') return;
@@ -669,7 +808,7 @@
       }
     }
 
-    // ===== DOM 載入完成後，綁事件 =====
+    // ===== DOM 載入後綁事件 & 監聽登入狀態 =====
     window.addEventListener('DOMContentLoaded', () => {
       authStatusEl = document.getElementById('authStatus');
       appAreaEl = document.getElementById('appArea');
@@ -677,6 +816,10 @@
       logoutBtn = document.getElementById('logoutBtn');
       showStrengthBtn = document.getElementById('showStrengthBtn');
       strengthArea = document.getElementById('strengthArea');
+      showAllWordsBtn = document.getElementById('showAllWordsBtn');
+      allWordsArea = document.getElementById('allWordsArea');
+      exportAllBtn = document.getElementById('exportAllBtn');
+      exportStrengthBtn = document.getElementById('exportStrengthBtn');
 
       const addWordBtn = document.getElementById('addWordBtn');
       const cancelEditBtn = document.getElementById('cancelEditBtn');
@@ -684,6 +827,8 @@
       const submitAnswerBtn = document.getElementById('submitAnswerBtn');
       const skipBtn = document.getElementById('skipBtn');
       const nextQuestionBtn = document.getElementById('nextQuestionBtn');
+      const searchBtn = document.getElementById('searchBtn');
+      const searchInput = document.getElementById('searchInput');
 
       if (loginBtn) {
         loginBtn.addEventListener('click', async () => {
@@ -727,12 +872,43 @@
         });
       }
 
+      if (showAllWordsBtn && allWordsArea) {
+        showAllWordsBtn.addEventListener('click', () => {
+          if (allWordsArea.style.display === 'none' || allWordsArea.style.display === '') {
+            renderAllWordsList();
+            allWordsArea.style.display = 'block';
+            showAllWordsBtn.textContent = '關閉全部單字庫';
+          } else {
+            allWordsArea.style.display = 'none';
+            showAllWordsBtn.textContent = '查看全部單字庫';
+          }
+        });
+      }
+
+      if (exportAllBtn) {
+        exportAllBtn.addEventListener('click', exportAllWordsCsv);
+      }
+
+      if (exportStrengthBtn) {
+        exportStrengthBtn.addEventListener('click', exportStrengthWordsCsv);
+      }
+
+      if (searchBtn) {
+        searchBtn.addEventListener('click', searchAllWords);
+      }
+      if (searchInput) {
+        searchInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            searchAllWords();
+          }
+        });
+      }
+
       document.addEventListener('keydown', globalEnterHandler);
 
-      // Firebase 登入狀態監聽
       onAuthStateChanged(auth, async (user) => {
         if (!authStatusEl || !loginBtn || !logoutBtn || !appAreaEl) return;
-
         if (user) {
           currentUser = user;
           const name = user.displayName || user.email || '使用者';
@@ -744,6 +920,7 @@
           renderTodayList();
           renderStrengthList();
           appAreaEl.style.display = 'block';
+          setTodayListVisible(true);
         } else {
           currentUser = null;
           state.words = [];
@@ -754,9 +931,10 @@
         }
       });
 
-      // 未登入時，先畫個空的列表（只是避免畫面空白）
+      // 初始畫面
       renderTodayList();
       renderStrengthList();
+      setTodayListVisible(true);
     });
   </script>
 </body>
