@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>韓文單字練習小工具（雲端同步版）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 16px;
+      line-height: 1.5;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 16px 20px 40px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+      border-radius: 8px;
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 4px;
+    }
+    h2 {
+      font-size: 18px;
+      margin-top: 24px;
+    }
+    .section {
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid #eee;
+    }
+    label {
+      display: block;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    input[type="text"], input[type="number"], select {
+      width: 100%;
+      padding: 8px 10px;
+      margin-top: 4px;
+      box-sizing: border-box;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    button {
+      margin-top: 12px;
+      padding: 8px 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      background: #1976d2;
+      color: #fff;
+    }
+    button.secondary {
+      background: #999;
+      margin-left: 8px;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .today-list {
+      margin-top: 8px;
+      font-size: 14px;
+      background: #fafafa;
+      border-radius: 4px;
+      padding: 8px;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+    .today-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .today-item span {
+      flex: 1;
+      margin-right: 8px;
+    }
+    .today-item button {
+      flex-shrink: 0;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    #quizArea {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 6px;
+      background: #fafafa;
+      display: none;
+    }
+    #questionText {
+      font-size: 18px;
+      font-weight: 600;
+      margin-top: 8px;
+      margin-bottom: 6px;
+    }
+    #quizInfo {
+      font-size: 14px;
+      color: #555;
+    }
+    #feedback {
+      margin-top: 8px;
+      font-size: 14px;
+      min-height: 18px;
+    }
+    #summary {
+      margin-top: 12px;
+      font-size: 14px;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    .small-note {
+      font-size: 12px;
+      color: #777;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>韓文單字練習</h1>
+    <div class="small-note">
+      單字會存在你的 Firebase 帳號底下，電腦和手機登入同一帳號就能共用。
+    </div>
+
+    <!-- 登入區 -->
+    <div class="section" id="authArea">
+      <h2>登入</h2>
+      <div id="authStatus">尚未登入</div>
+      <button id="loginBtn">使用 Google 登入</button>
+      <button id="logoutBtn" class="secondary" style="display:none;">登出</button>
+      <div class="small-note">
+        先登入之後，下面的單字功能才會啟用。
+      </div>
+    </div>
+
+    <!-- 主功能區：登入後才顯示 -->
+    <div id="appArea" style="display:none;">
+      <!-- 區塊 1：輸入今天的單字 -->
+      <div class="section">
+        <h2>① 輸入今天的新單字（10～30個）</h2>
+        <label>中文意思
+          <input
+            type="text"
+            id="chineseInput"
+            placeholder="例如：學校"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+          >
+        </label>
+        <label>韓文
+          <input
+            type="text"
+            id="koreanInput"
+            placeholder="例如：학교"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+          >
+        </label>
+        <button id="addWordBtn">加入今日單字</button>
+        <button id="cancelEditBtn" class="secondary" style="display:none;">取消修改</button>
+        <div class="small-note">
+          一天可重複加入很多次，全部都算「今天的新單字」。<br>
+          如果打錯字，可以在下面列表按「編輯」修改。
+        </div>
+
+        <div class="today-list" id="todayList">
+          今天還沒有新增單字。
+        </div>
+      </div>
+
+      <!-- 區塊 2：選擇練習模式 -->
+      <div class="section">
+        <h2>② 選擇練習模式</h2>
+        <label>模式
+          <select id="modeSelect">
+            <option value="today">1. 今天的新單字</option>
+            <option value="wrong">2. 加強練習（曾經答錯的單字）</option>
+            <option value="all">3. 複習全部單字</option>
+          </select>
+        </label>
+        <label>題數
+          <input type="number" id="questionCount" value="30" min="1" max="100">
+        </label>
+        <button id="startQuizBtn">開始測驗</button>
+        <button id="showStrengthBtn" class="secondary" style="margin-left:0;">查看加強練習單字</button>
+        <div class="small-note">如果單字數不夠，系統會自動重複出題直到達到題數。</div>
+
+        <!-- 加強練習單字列表 -->
+        <div id="strengthArea" style="display:none; margin-top:8px;">
+          <div class="small-note">目前在加強練習區的單字：</div>
+          <div id="strengthList" class="today-list">
+            目前沒有在加強練習區的單字。
+          </div>
+        </div>
+
+        <!-- 測驗區 -->
+        <div id="quizArea">
+          <div id="quizInfo"></div>
+          <div id="questionText"></div>
+          <label>請輸入韓文：
+            <input
+              type="text"
+              id="answerInput"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+            >
+          </label>
+          <button id="submitAnswerBtn">送出答案</button>
+          <button id="skipBtn" class="secondary">不會 / 跳過</button>
+          <div id="feedback"></div>
+
+          <button id="nextQuestionBtn" style="display:none;" class="secondary">下一題</button>
+
+          <div id="summary"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS：Firebase + App 邏輯 -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js';
+    import {
+      getAuth,
+      onAuthStateChanged,
+      signInWithPopup,
+      signOut,
+      GoogleAuthProvider,
+    } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js';
+    import {
+      getFirestore,
+      doc,
+      getDoc,
+      setDoc,
+    } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js';
+
+    // ★★★ 把這段換成你 Firebase 專案的設定 ★★★
+    const firebaseConfig = {
+      apiKey: "AIzaSyAFWMBI4pTzWYsDLpuUEi3PBJ4u2llDMLc",
+      authDomain: "korean-8ab65.firebaseapp.com",
+      projectId: "korean-8ab65",
+      storageBucket: "korean-8ab65.firebasestorage.app",
+      messagingSenderId: "1039991780656",
+      appId: "1:1039991780656:web:88c01469fae9f201c844f5",
+};
+
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    // === 狀態 ===
+    // word: { id, chinese, korean, date, correctCount, wrongCount, inStrength, strengthStreak }
+    let state = { words: [] };
+
+    let quizWords = [];
+    let currentIndex = 0;
+    let quizStats = {
+      correct: 0,
+      wrong: 0,
+      wrongIds: new Set()
+    };
+    let quizActive = false;
+    let currentMode = 'today';
+    let editingWordId = null;
+    let currentUser = null;
+
+    // UI 元件（之後在 DOMContentLoaded 裡面賦值）
+    let authStatusEl, appAreaEl, loginBtn, logoutBtn, showStrengthBtn, strengthArea;
+
+    function todayString() {
+      const d = new Date();
+      return d.toISOString().slice(0, 10);
+    }
+
+    // ===== Firestore 讀寫 =====
+    async function loadState() {
+      if (!currentUser) {
+        state.words = [];
+        return;
+      }
+      try {
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const snap = await getDoc(userDocRef);
+        if (snap.exists()) {
+          const data = snap.data() || {};
+          const words = Array.isArray(data.words) ? data.words : [];
+          state.words = words.map(w => ({
+            id: w.id || (Date.now().toString() + Math.random().toString(36).slice(2)),
+            chinese: w.chinese || '',
+            korean: w.korean || '',
+            date: w.date || todayString(),
+            correctCount: w.correctCount || 0,
+            wrongCount: w.wrongCount || 0,
+            inStrength: !!w.inStrength,
+            strengthStreak: w.strengthStreak || 0
+          }));
+        } else {
+          state.words = [];
+        }
+      } catch (e) {
+        console.error('loadState error', e);
+        alert('從雲端讀取資料失敗，先顯示空白，等等可以重新整理再試一次。');
+        state.words = [];
+      }
+    }
+
+    function saveState() {
+      if (!currentUser) return;
+      (async () => {
+        try {
+          const userDocRef = doc(db, 'users', currentUser.uid);
+          await setDoc(userDocRef, { words: state.words }, { merge: true });
+        } catch (e) {
+          console.error('saveState error', e);
+        }
+      })();
+    }
+
+    // ===== UI：列表 =====
+    function renderTodayList() {
+      const container = document.getElementById('todayList');
+      if (!container) return;
+      const today = todayString();
+      const todays = state.words.filter(w => w.date === today);
+      if (!todays.length) {
+        container.textContent = '今天還沒有新增單字。';
+        return;
+      }
+      container.innerHTML = todays.map(w => `
+        <div class="today-item">
+          <span>${w.chinese} → ${w.korean}</span>
+          <button class="editWordBtn" data-id="${w.id}">編輯</button>
+        </div>
+      `).join('');
+
+      container.querySelectorAll('.editWordBtn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          startEditWord(btn.dataset.id);
+        });
+      });
+    }
+
+    function renderStrengthList() {
+      const container = document.getElementById('strengthList');
+      if (!container) return;
+      const list = state.words.filter(w => w.inStrength);
+      if (!list.length) {
+        container.textContent = '目前沒有在加強練習區的單字。';
+        return;
+      }
+      container.innerHTML = list
+        .map(w => `<div>${w.chinese} → ${w.korean}</div>`)
+        .join('');
+    }
+
+    function startEditWord(id) {
+      const word = state.words.find(w => w.id === id);
+      if (!word) return;
+      editingWordId = id;
+      const chInput = document.getElementById('chineseInput');
+      const krInput = document.getElementById('koreanInput');
+      const addBtn = document.getElementById('addWordBtn');
+      const cancelBtn = document.getElementById('cancelEditBtn');
+      if (!chInput || !krInput || !addBtn || !cancelBtn) return;
+      chInput.value = word.chinese;
+      krInput.value = word.korean;
+      addBtn.textContent = '儲存修改';
+      cancelBtn.style.display = 'inline-block';
+    }
+
+    function cancelEdit() {
+      editingWordId = null;
+      const chInput = document.getElementById('chineseInput');
+      const krInput = document.getElementById('koreanInput');
+      const addBtn = document.getElementById('addWordBtn');
+      const cancelBtn = document.getElementById('cancelEditBtn');
+      if (!chInput || !krInput || !addBtn || !cancelBtn) return;
+      chInput.value = '';
+      krInput.value = '';
+      addBtn.textContent = '加入今日單字';
+      cancelBtn.style.display = 'none';
+    }
+
+    function addWord() {
+      const chInput = document.getElementById('chineseInput');
+      const krInput = document.getElementById('koreanInput');
+      if (!chInput || !krInput) return;
+      const ch = chInput.value.trim();
+      const kr = krInput.value.trim();
+      if (!ch || !kr) {
+        alert('中文與韓文都要填喔～');
+        return;
+      }
+
+      if (editingWordId) {
+        const word = state.words.find(w => w.id === editingWordId);
+        if (word) {
+          word.chinese = ch;
+          word.korean = kr;
+        }
+      } else {
+        const word = {
+          id: Date.now().toString() + Math.random().toString(36).slice(2),
+          chinese: ch,
+          korean: kr,
+          date: todayString(),
+          correctCount: 0,
+          wrongCount: 0,
+          inStrength: false,
+          strengthStreak: 0
+        };
+        state.words.push(word);
+      }
+
+      saveState();
+      renderTodayList();
+      if (strengthArea && strengthArea.style.display !== 'none') {
+        renderStrengthList();
+      }
+      cancelEdit();
+    }
+
+    // ===== 出題相關 =====
+    function getCandidateWords(mode) {
+      const today = todayString();
+      if (mode === 'today') {
+        return state.words.filter(w => w.date === today);
+      } else if (mode === 'wrong') {
+        return state.words.filter(w => w.inStrength);
+      } else {
+        return state.words;
+      }
+    }
+
+    function createQuizList(sourceWords, desiredCount) {
+      const list = [];
+      if (!sourceWords.length) return list;
+      desiredCount = Math.max(1, desiredCount);
+      while (list.length < desiredCount) {
+        for (let w of sourceWords) {
+          list.push(w);
+          if (list.length >= desiredCount) break;
+        }
+      }
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = list[i];
+        list[i] = list[j];
+        list[j] = tmp;
+      }
+      return list;
+    }
+
+    function startQuiz() {
+      if (!currentUser) {
+        alert('請先登入～');
+        return;
+      }
+      const modeSelect = document.getElementById('modeSelect');
+      const countInput = document.getElementById('questionCount');
+      const quizArea = document.getElementById('quizArea');
+      const feedback = document.getElementById('feedback');
+      const nextBtn = document.getElementById('nextQuestionBtn');
+      const summary = document.getElementById('summary');
+      if (!modeSelect || !countInput || !quizArea || !feedback || !nextBtn || !summary) return;
+
+      const mode = modeSelect.value;
+      currentMode = mode;
+      const desired = parseInt(countInput.value, 10) || 30;
+      const candidates = getCandidateWords(mode);
+      if (!candidates.length) {
+        if (mode === 'today') {
+          alert('今天還沒有單字，可以先到上面新增哦。');
+        } else if (mode === 'wrong') {
+          alert('目前加強練習區是空的，先做幾題錯題吧。');
+        } else {
+          alert('目前資料庫是空的，先新增一些單字吧！');
+        }
+        return;
+      }
+      quizWords = createQuizList(candidates, desired);
+      currentIndex = 0;
+      quizStats = { correct: 0, wrong: 0, wrongIds: new Set() };
+      quizActive = true;
+      summary.innerHTML = '';
+      quizArea.style.display = 'block';
+      nextBtn.style.display = 'none';
+      feedback.textContent = '';
+      showCurrentQuestion();
+    }
+
+    function showCurrentQuestion() {
+      if (!quizActive || !quizWords.length) return;
+      const info = document.getElementById('quizInfo');
+      const qText = document.getElementById('questionText');
+      const ansInput = document.getElementById('answerInput');
+      const nextBtn = document.getElementById('nextQuestionBtn');
+      const feedback = document.getElementById('feedback');
+      const submitBtn = document.getElementById('submitAnswerBtn');
+      const skipBtn = document.getElementById('skipBtn');
+      if (!info || !qText || !ansInput || !nextBtn || !feedback || !submitBtn || !skipBtn) return;
+
+      const total = quizWords.length;
+      const idx = currentIndex + 1;
+      const word = quizWords[currentIndex];
+
+      info.textContent = `第 ${idx} / ${total} 題`;
+      qText.textContent = `中文：${word.chinese}`;
+      ansInput.value = '';
+      ansInput.disabled = false;
+      submitBtn.disabled = false;
+      skipBtn.disabled = false;
+      nextBtn.style.display = 'none';
+      feedback.textContent = '';
+      ansInput.focus();
+    }
+
+    function normalize(str) {
+      return str.trim();
+    }
+
+    function handleAnswer(isSkip) {
+      if (!quizActive) return;
+      const ansInput = document.getElementById('answerInput');
+      const feedback = document.getElementById('feedback');
+      const submitBtn = document.getElementById('submitAnswerBtn');
+      const skipBtn = document.getElementById('skipBtn');
+      const nextBtn = document.getElementById('nextQuestionBtn');
+      if (!ansInput || !feedback || !submitBtn || !skipBtn || !nextBtn) return;
+
+      const word = quizWords[currentIndex];
+      const userAns = normalize(ansInput.value);
+      const correctAns = normalize(word.korean);
+
+      let correct = false;
+      if (!isSkip && userAns === correctAns) {
+        correct = true;
+      }
+
+      let extraMsg = '';
+
+      if (correct) {
+        quizStats.correct += 1;
+        word.correctCount = (word.correctCount || 0) + 1;
+
+        if (word.inStrength) {
+          word.strengthStreak = (word.strengthStreak || 0) + 1;
+          if (word.strengthStreak >= 3) {
+            word.inStrength = false;
+            word.strengthStreak = 0;
+            extraMsg = '（已連續答對三次，從加強練習區畢業 🎉）';
+          }
+        }
+
+        feedback.textContent = '✔️ 正確！' + extraMsg;
+      } else {
+        quizStats.wrong += 1;
+        word.wrongCount = (word.wrongCount || 0) + 1;
+        quizStats.wrongIds.add(word.id);
+
+        // ★ 需求 3：在「加強練習模式」裡錯題，不再重新放入加強區
+        if (currentMode !== 'wrong' && !word.inStrength) {
+          word.inStrength = true;
+        }
+        word.strengthStreak = 0;
+
+        feedback.textContent = `❌ 不正確，正確答案是：${word.korean}`;
+      }
+
+      saveState();
+      if (strengthArea && strengthArea.style.display !== 'none') {
+        renderStrengthList();
+      }
+
+      ansInput.disabled = true;
+      submitBtn.disabled = true;
+      skipBtn.disabled = true;
+      nextBtn.style.display = 'inline-block';
+      nextBtn.textContent = (currentIndex >= quizWords.length - 1) ? '看成績' : '下一題';
+    }
+
+    function nextQuestion() {
+      if (!quizActive) return;
+      if (currentIndex >= quizWords.length - 1) {
+        endQuiz();
+      } else {
+        currentIndex += 1;
+        showCurrentQuestion();
+      }
+    }
+
+    function endQuiz() {
+      quizActive = false;
+      const summary = document.getElementById('summary');
+      const ansInput = document.getElementById('answerInput');
+      const submitBtn = document.getElementById('submitAnswerBtn');
+      const skipBtn = document.getElementById('skipBtn');
+      const nextBtn = document.getElementById('nextQuestionBtn');
+      if (!summary || !ansInput || !submitBtn || !skipBtn || !nextBtn) return;
+
+      const total = quizWords.length;
+      const wrongIdsArr = Array.from(quizStats.wrongIds);
+      let wrongListHtml = '';
+      if (wrongIdsArr.length) {
+        const wrongWords = state.words.filter(w => wrongIdsArr.includes(w.id));
+        wrongListHtml = '<ul>' +
+          wrongWords.map(w => `<li>${w.chinese} → ${w.korean}</li>`).join('') +
+          '</ul>';
+      } else {
+        wrongListHtml = '<div>全部都答對，太強啦 🎉</div>';
+      }
+
+      const wrongTitle = currentMode === 'wrong'
+        ? '這次答錯的單字：'
+        : '這次答錯的單字（自動加入「加強練習」）：';
+
+      summary.innerHTML = `
+        <hr>
+        <div>本次成績：${quizStats.correct} 題正確，${quizStats.wrong} 題錯誤（共 ${total} 題）</div>
+        <div style="margin-top:6px;">${wrongTitle}</div>
+        ${wrongListHtml}
+        <button id="backToModeBtn" class="secondary" style="margin-top:8px;">回到模式選擇</button>
+      `;
+
+      ansInput.disabled = true;
+      submitBtn.disabled = true;
+      skipBtn.disabled = true;
+      nextBtn.style.display = 'none';
+
+      const backBtn = document.getElementById('backToModeBtn');
+      if (backBtn) {
+        backBtn.addEventListener('click', () => {
+          const quizArea = document.getElementById('quizArea');
+          if (quizArea) quizArea.style.display = 'none';
+        }, { once: true });
+      }
+    }
+
+    // ===== 全域 Enter：送出答案 / 下一題 =====
+    function globalEnterHandler(e) {
+      if (e.key !== 'Enter') return;
+      if (!quizActive) return;
+      const quizArea = document.getElementById('quizArea');
+      if (!quizArea || quizArea.style.display === 'none') return;
+      e.preventDefault();
+      const submitBtn = document.getElementById('submitAnswerBtn');
+      const nextBtn = document.getElementById('nextQuestionBtn');
+      if (submitBtn && !submitBtn.disabled) {
+        handleAnswer(false);
+      } else if (nextBtn && nextBtn.style.display !== 'none') {
+        nextQuestion();
+      }
+    }
+
+    // ===== DOM 載入完成後，綁事件 =====
+    window.addEventListener('DOMContentLoaded', () => {
+      authStatusEl = document.getElementById('authStatus');
+      appAreaEl = document.getElementById('appArea');
+      loginBtn = document.getElementById('loginBtn');
+      logoutBtn = document.getElementById('logoutBtn');
+      showStrengthBtn = document.getElementById('showStrengthBtn');
+      strengthArea = document.getElementById('strengthArea');
+
+      const addWordBtn = document.getElementById('addWordBtn');
+      const cancelEditBtn = document.getElementById('cancelEditBtn');
+      const startQuizBtn = document.getElementById('startQuizBtn');
+      const submitAnswerBtn = document.getElementById('submitAnswerBtn');
+      const skipBtn = document.getElementById('skipBtn');
+      const nextQuestionBtn = document.getElementById('nextQuestionBtn');
+
+      if (loginBtn) {
+        loginBtn.addEventListener('click', async () => {
+          try {
+            await signInWithPopup(auth, provider);
+          } catch (e) {
+            console.error(e);
+            alert('登入失敗：' + (e.code || '') + '\n' + (e.message || ''));
+          }
+        });
+      }
+
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+          try {
+            await signOut(auth);
+          } catch (e) {
+            console.error(e);
+            alert('登出失敗，請稍後再試。');
+          }
+        });
+      }
+
+      if (addWordBtn) addWordBtn.addEventListener('click', addWord);
+      if (cancelEditBtn) cancelEditBtn.addEventListener('click', cancelEdit);
+      if (startQuizBtn) startQuizBtn.addEventListener('click', startQuiz);
+      if (submitAnswerBtn) submitAnswerBtn.addEventListener('click', () => handleAnswer(false));
+      if (skipBtn) skipBtn.addEventListener('click', () => handleAnswer(true));
+      if (nextQuestionBtn) nextQuestionBtn.addEventListener('click', nextQuestion);
+
+      if (showStrengthBtn && strengthArea) {
+        showStrengthBtn.addEventListener('click', () => {
+          if (strengthArea.style.display === 'none' || strengthArea.style.display === '') {
+            renderStrengthList();
+            strengthArea.style.display = 'block';
+            showStrengthBtn.textContent = '關閉加強練習單字';
+          } else {
+            strengthArea.style.display = 'none';
+            showStrengthBtn.textContent = '查看加強練習單字';
+          }
+        });
+      }
+
+      document.addEventListener('keydown', globalEnterHandler);
+
+      // Firebase 登入狀態監聽
+      onAuthStateChanged(auth, async (user) => {
+        if (!authStatusEl || !loginBtn || !logoutBtn || !appAreaEl) return;
+
+        if (user) {
+          currentUser = user;
+          const name = user.displayName || user.email || '使用者';
+          authStatusEl.textContent = `已登入：${name}`;
+          loginBtn.style.display = 'none';
+          logoutBtn.style.display = 'inline-block';
+
+          await loadState();
+          renderTodayList();
+          renderStrengthList();
+          appAreaEl.style.display = 'block';
+        } else {
+          currentUser = null;
+          state.words = [];
+          authStatusEl.textContent = '尚未登入';
+          loginBtn.style.display = 'inline-block';
+          logoutBtn.style.display = 'none';
+          appAreaEl.style.display = 'none';
+        }
+      });
+
+      // 未登入時，先畫個空的列表（只是避免畫面空白）
+      renderTodayList();
+      renderStrengthList();
+    });
+  </script>
+</body>
+</html>
