@@ -264,12 +264,14 @@
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js';
     import {
-      getAuth,
-      onAuthStateChanged,
-      signInWithPopup,
-      signOut,
-      GoogleAuthProvider
-    } from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js';
+ 	 getAuth,
+	  onAuthStateChanged,
+	  signInWithPopup,
+ 	 signInWithRedirect,
+ 	 getRedirectResult,
+	  signOut,
+	  GoogleAuthProvider
+	} from 'https://www.gstatic.com/firebasejs/12.7.0/firebase-auth.js';
     import {
       getFirestore,
       doc,
@@ -889,6 +891,9 @@
 
     // ===== DOM 載入後綁事件 & 監聽登入狀態 =====
     window.addEventListener('DOMContentLoaded', () => {
+	getRedirectResult(auth).catch((e) => {
+	  console.error('getRedirectResult error', e);
+	});
       authStatusEl = document.getElementById('authStatus');
       appAreaEl = document.getElementById('appArea');
       loginBtn = document.getElementById('loginBtn');
@@ -911,13 +916,25 @@
 
       if (loginBtn) {
         loginBtn.addEventListener('click', async () => {
-          try {
-            await signInWithPopup(auth, provider);
-          } catch (e) {
-            console.error(e);
-            alert('登入失敗：' + (e.code || '') + '\n' + (e.message || ''));
-          }
-        });
+  		try {
+  		  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  		  const isStandalone =
+  		    window.matchMedia('(display-mode: standalone)').matches ||
+   		   window.navigator.standalone === true; // iOS Safari 旧版
+
+   		 // ✅ iPhone 或「加入主畫面」模式：用 redirect 比 popup 穩
+   		 if (isIOS || isStandalone) {
+   		   await signInWithRedirect(auth, provider);
+   		   return; // redirect 會跳頁
+   		 }
+
+   		 // ✅ 桌機：用 popup
+ 		   await signInWithPopup(auth, provider);
+ 		 } catch (e) {
+ 		   console.error(e);
+ 		   alert('登入失敗：' + (e.code || '') + '\n' + (e.message || ''));
+ 		 }
+		});
       }
 
       if (logoutBtn) {
